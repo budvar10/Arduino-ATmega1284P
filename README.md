@@ -1,3 +1,3 @@
 # Arduino-ATmega1284P
 
-Repository for Arduino clone "@rduino-PRO 1284".
+Repository for Arduino clone "badio @rduino-PRO 1284".
