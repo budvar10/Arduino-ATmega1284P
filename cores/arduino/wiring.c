@@ -62,6 +62,7 @@
 
     14.07.2015 - support for 24MHz; changes in delayMicroseconds()
 
+    02.01.2017 - support for 25MHz; changes in delayMicroseconds()
  */
 
 /* include */
@@ -97,7 +98,9 @@
  */
     #define TIMER0_PRESCALER    256
 
-    #if F_CPU == 24000000L
+    #if   F_CPU == 25000000L
+	       #define TIMER0_TOP      100		   // F_CPU / 250000L
+    #elif F_CPU == 24000000L
         #define TIMER0_TOP       96     // F_CPU / 250000L
     #elif F_CPU == 20000000L
         #define TIMER0_TOP       80     // F_CPU / 250000L
@@ -284,7 +287,10 @@ uint8_t       oldSREG = SREG;
        NOTE: First step is to find the largest common divisor for the microseconds per
              interrupt and the timer top value.
      */
-        #if F_CPU == 24000000L
+      		#if   F_CPU == 25000000L
+		      /* MICROSECONDS_PER_TIMER0_INTERRUPT/4 = 256; TIMER0_TOP/4 = 25 (k = 10.24) */
+			         return(m + (((uint16_t)t << 8) / (TIMER0_TOP >> 2)));
+        #elif F_CPU == 24000000L
         /* MICROSECONDS_PER_TIMER0_INTERRUPT/32 = 32; TIMER0_TOP/32 = 3 (k = 10.66..) */
             return(m + (((uint16_t)t << 5) / (TIMER0_TOP >> 5)));
         #elif F_CPU == 20000000L
@@ -347,8 +353,34 @@ void delayMicroseconds(unsigned int us)
    Longer delay is more accurate.
  */
 
+/* 25 MHz overclocked Arduino boards */
+#if F_CPU >= 25000000L
+
+   	// function call is considered 5 cycles (LDI, LDI, RCALL) - constant parameter
+
+   	// zero delay - 13 cycles totally which is slightly more than 1/2us
+    if(!us) return;             // 3 cycles, 4 cycles when true
+
+   	// the busy-wait loop takes a 1/5 of a microsecond (5 cycles) per iteration,
+	   // so execute it five times for each microsecond of delay requested
+    us = (us << 2) + us;		      // x5 us, 7 cycles
+
+	   // account for the time taken in the preceeding commands
+	   us -= 5;					               // 2 cycles
+
+	   // 1 us: preceeding commands takes 17 cycles and next if and return takes 8,
+	   // it is exactly 25 cycles in total for 1us
+	   if(!us) return;			        	 // 3 cycles, 4 cycles when true
+
+	   // for the first us (if us > 1) the preceeding commands takes 24 cycles, 1 cycle is
+	   // missing and additional one for the last loop in the end of function,
+	   // 2 cycles totally
+   	__asm__ __volatile__ (
+	   	    "nop" "\n\t"
+		       "nop");          					 // just waiting 2 cycles
+
 /* 24 MHz overclocked Arduino boards */
-#if F_CPU >= 24000000L
+#elif F_CPU >= 24000000L
 
     // function call is considered 5 cycles (LDI, LDI, RCALL) - constant parameter
 
@@ -463,11 +495,23 @@ void delayMicroseconds(unsigned int us)
 #endif
 
 /* busy wait */
+#if F_CPU >= 25000000L
+
+    __asm__ __volatile__ (
+        "1: sbiw %0,1" "\n\t"					          // 2 cycles
+		      "   nop"       "\n\t"				          	// 1 cycle
+		      "   brne 1b" : "=w" (us) : "0" (us)	// 2 cycles, 1 cycle when false
+	   );
+
+#else
+
+/* busy wait */
     __asm__ __volatile__ (
         "1: sbiw %0,1" "\n\t"               // 2 cycles
         "   brne 1b" : "=w" (us) : "0" (us) // 2 cycles, 1 cycle when false
     );
 
+#endif
     return;     // 4 cycles
 }
 
@@ -667,6 +711,8 @@ void init()
             // XXX: this will not work properly for other clock speeds, and
             // this code should use F_CPU to determine the prescale factor.
             // Also for 20 MHz / 128 = 156,250 kHz.
+	         		//          24 MHz / 128 = 187.500 kHz,
+			         //          25 MHz / 128 = 195.3125 kHz.
 //          sbi(ADCSRA, ADPS2);
 //          sbi(ADCSRA, ADPS1);
 //          sbi(ADCSRA, ADPS0);
