@@ -99,7 +99,7 @@
     #define TIMER0_PRESCALER    256
 
     #if   F_CPU == 25000000L
-	       #define TIMER0_TOP      100		   // F_CPU / 250000L
+	#define TIMER0_TOP      100     // F_CPU / 250000L
     #elif F_CPU == 24000000L
         #define TIMER0_TOP       96     // F_CPU / 250000L
     #elif F_CPU == 20000000L
